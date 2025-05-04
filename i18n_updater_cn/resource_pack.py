@@ -96,29 +96,31 @@ class ResourcePack:
         # 计算本地文件MD5
         local_md5 = self._calculate_md5(local_file)
         
-        # 获取远程MD5
-        if self.remote_md5 is None:
-            try:
-                # 自定义请求头，防止下载管理器如IDM拦截请求
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/plain',
-                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive',
-                    'Cache-Control': 'no-cache',
-                    'X-I18n-Updater': 'md5-check'
-                }
-                
-                response = requests.get(md5_url, timeout=30, headers=headers)
-                response.raise_for_status()
-                self.remote_md5 = response.text.strip()
-                
-                # 处理可能存在的额外格式问题（如复制粘贴导致的特殊字符）
-                self.remote_md5 = ''.join(c for c in self.remote_md5 if c.isalnum())
-            except Exception as e:
-                Logger.warning(f"获取远程MD5失败: {e}")
-                return False
+        # 获取远程MD5 - 每次都重新获取，避免缓存问题
+        try:
+            # 自定义请求头，防止下载管理器如IDM拦截请求
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/plain',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Cache-Control': 'no-cache',
+                'X-I18n-Updater': 'md5-check'
+            }
+            
+            # 每次校验都重新获取远程MD5，避免缓存问题
+            self.remote_md5 = None
+            
+            response = requests.get(md5_url, timeout=30, headers=headers)
+            response.raise_for_status()
+            self.remote_md5 = response.text.strip()
+            
+            # 处理可能存在的额外格式问题（如复制粘贴导致的特殊字符）
+            self.remote_md5 = ''.join(c for c in self.remote_md5 if c.isalnum())
+        except Exception as e:
+            Logger.warning(f"获取远程MD5失败: {e}")
+            return False
         
         # 确保MD5是标准格式（32位十六进制字符）
         clean_local_md5 = ''.join(c for c in local_md5 if c.isalnum())
@@ -133,6 +135,7 @@ class ResourcePack:
         Logger.debug(f"本地MD5 (清理后): {clean_local_md5}")
         Logger.debug(f"远程MD5 (原始): {self.remote_md5}")
         Logger.debug(f"远程MD5 (清理后): {clean_remote_md5}")
+        Logger.debug(f"MD5 URL: {md5_url}")  # 添加MD5 URL日志
         
         match_result = clean_local_md5 == clean_remote_md5
         if match_result:

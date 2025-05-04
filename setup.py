@@ -8,8 +8,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="i18n-updater-cn",
-    version="1.0.5",
-    author="CFPA Team",
+    version="1.0.6",
+    author="Zack Zhu",
     author_email="kressety@163.com",
     description="Minecraft模组汉化包更新器",
     long_description=long_description,
@@ -20,7 +20,6 @@ setup(
     },
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: GNU Affero General Public License v3",
         "Operating System :: OS Independent",
     ],
     packages=find_packages(),
