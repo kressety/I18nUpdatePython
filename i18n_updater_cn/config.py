@@ -5,6 +5,9 @@ import json
 import os
 import importlib.resources
 from pathlib import Path
+import requests
+import time
+import logging
 
 from .version import Version, VersionRange
 
@@ -15,73 +18,50 @@ class I18nConfig:
     # CFPA资源包下载根路径
     CFPA_ASSET_ROOT = "http://downloader1.meitangdehulu.com:22943/"
     
+    # 元数据在线源
+    METADATA_SOURCE = "https://raw.githubusercontent.com/CFPAOrg/I18nUpdateMod3/refs/heads/main/src/main/resources/i18nMetaData.json"
+    METADATA_MIRROR = "https://github-proxy.mealuet.com/https://raw.githubusercontent.com/CFPAOrg/I18nUpdateMod3/refs/heads/main/src/main/resources/i18nMetaData.json"
+    
     # 元数据缓存
     _i18n_metadata = None
+    _metadata_cache_time = 0
+    _metadata_cache_duration = 3600  # 缓存有效期1小时
     
     @classmethod
     def _load_metadata(cls):
         """加载元数据文件"""
-        if cls._i18n_metadata is not None:
+        # 如果已有缓存且未过期，直接使用
+        current_time = time.time()
+        if cls._i18n_metadata is not None and (current_time - cls._metadata_cache_time) < cls._metadata_cache_duration:
             return
         
-        # 首先尝试从包资源中加载
-        try:
-            metadata_text = importlib.resources.read_text('i18n_updater_cn', 'i18nMetaData.json', encoding='utf-8')
-            cls._i18n_metadata = json.loads(metadata_text)
+        # 尝试从在线源获取
+        metadata = cls._fetch_online_metadata()
+        if metadata:
+            cls._i18n_metadata = metadata
+            cls._metadata_cache_time = current_time
+            logging.info("成功从在线源获取元数据")
             return
-        except (ImportError, FileNotFoundError):
-            pass
-
-        # 尝试从当前目录加载
-        metadata_path = Path(__file__).parent / "i18nMetaData.json"
-        if os.path.exists(metadata_path):
-            with open(metadata_path, 'r', encoding='utf-8') as f:
-                cls._i18n_metadata = json.load(f)
-            return
-        
-        # 如果找不到文件，使用内置的默认元数据
-        cls._i18n_metadata = cls._get_default_metadata()
+            
+        # 如果在线源都获取失败，抛出异常
+        raise ConnectionError("无法从在线源获取元数据，请检查网络连接或稍后再试")
     
-    @staticmethod
-    def _get_default_metadata():
-        """获取内置的默认元数据，这样即使没有外部文件也能工作"""
-        return {
-            "version": "3.6.2",
-            "games": [
-                {"gameVersions": "[1.6.1,1.8.9]", "packFormat": 1, "convertFrom": ["1.10.2", "1.12.2"]},
-                {"gameVersions": "[1.9,1.10.2]", "packFormat": 2, "convertFrom": ["1.10.2", "1.12.2"]},
-                {"gameVersions": "[1.11,1.12.2]", "packFormat": 3, "convertFrom": ["1.12.2"]},
-                {"gameVersions": "[1.13,1.14.4]", "packFormat": 4, "convertFrom": ["1.16"]},
-                {"gameVersions": "[1.15,1.16.1]", "packFormat": 5, "convertFrom": ["1.16"]},
-                {"gameVersions": "[1.16.2,1.16.5]", "packFormat": 6, "convertFrom": ["1.16"]},
-                {"gameVersions": "[1.17,1.17.1]", "packFormat": 7, "convertFrom": ["1.18", "1.16"]},
-                {"gameVersions": "[1.18,1.18.2]", "packFormat": 8, "convertFrom": ["1.18"]},
-                {"gameVersions": "[1.19,1.19.2]", "packFormat": 9, "convertFrom": ["1.19", "1.18"]},
-                {"gameVersions": "[1.19.3,1.19.3]", "packFormat": 12, "convertFrom": ["1.19", "1.18"]},
-                {"gameVersions": "[1.19.4,1.19.4]", "packFormat": 13, "convertFrom": ["1.19", "1.18"]},
-                {"gameVersions": "[1.20,1.20.1]", "packFormat": 15, "convertFrom": ["1.20", "1.19", "1.18"]},
-                {"gameVersions": "[1.20.2,1.20.2]", "packFormat": 18, "convertFrom": ["1.20", "1.19", "1.18"]},
-                {"gameVersions": "[1.20.3,1.20.4]", "packFormat": 22, "convertFrom": ["1.20", "1.19", "1.18"]},
-                {"gameVersions": "[1.20.5,1.20.6]", "packFormat": 32, "convertFrom": ["1.20", "1.19", "1.18"]},
-                {"gameVersions": "[1.21,1.21.1]", "packFormat": 34, "convertFrom": ["1.21", "1.20", "1.19"]},
-                {"gameVersions": "[1.21.2,1.21.3]", "packFormat": 42, "convertFrom": ["1.21", "1.20", "1.19"]},
-                {"gameVersions": "[1.21.4,1.21.4]", "packFormat": 46, "convertFrom": ["1.21", "1.20", "1.19"]},
-                {"gameVersions": "[1.21.5,1.21.5]", "packFormat": 55, "convertFrom": ["1.21", "1.20", "1.19"]}
-            ],
-            "assets": [
-                {"targetVersion": "1.10.2", "loader": "Forge", "filename": "Minecraft-Mod-Language-Modpack-1-10-2.zip", "md5Filename": "1.10.2.md5"},
-                {"targetVersion": "1.12.2", "loader": "Forge", "filename": "Minecraft-Mod-Language-Modpack.zip", "md5Filename": "1.12.2.md5"},
-                {"targetVersion": "1.16", "loader": "Forge", "filename": "Minecraft-Mod-Language-Modpack-1-16.zip", "md5Filename": "1.16.md5"},
-                {"targetVersion": "1.16", "loader": "Fabric", "filename": "Minecraft-Mod-Language-Modpack-1-16-Fabric.zip", "md5Filename": "1.16-fabric.md5"},
-                {"targetVersion": "1.18", "loader": "Forge", "filename": "Minecraft-Mod-Language-Modpack-1-18.zip", "md5Filename": "1.18.md5"},
-                {"targetVersion": "1.18", "loader": "Fabric", "filename": "Minecraft-Mod-Language-Modpack-1-18-Fabric.zip", "md5Filename": "1.18-fabric.md5"},
-                {"targetVersion": "1.19", "loader": "Forge", "filename": "Minecraft-Mod-Language-Modpack-1-19.zip", "md5Filename": "1.19.md5"},
-                {"targetVersion": "1.20", "loader": "Forge", "filename": "Minecraft-Mod-Language-Modpack-1-20.zip", "md5Filename": "1.20.md5"},
-                {"targetVersion": "1.20", "loader": "Fabric", "filename": "Minecraft-Mod-Language-Modpack-1-20-Fabric.zip", "md5Filename": "1.20-fabric.md5"},
-                {"targetVersion": "1.21", "loader": "Forge", "filename": "Minecraft-Mod-Language-Modpack-1-21.zip", "md5Filename": "1.21.md5"},
-                {"targetVersion": "1.21", "loader": "Fabric", "filename": "Minecraft-Mod-Language-Modpack-1-21-Fabric.zip", "md5Filename": "1.21-fabric.md5"}
-            ]
-        }
+    @classmethod
+    def _fetch_online_metadata(cls):
+        """从在线源获取元数据"""
+        sources = [cls.METADATA_SOURCE, cls.METADATA_MIRROR]
+        
+        for source in sources:
+            try:
+                logging.info(f"尝试从 {source} 获取元数据")
+                response = requests.get(source, timeout=10)
+                if response.status_code == 200:
+                    return json.loads(response.text)
+            except Exception as e:
+                logging.warning(f"从 {source} 获取元数据失败: {str(e)}")
+                continue
+        
+        return None
     
     @classmethod
     def _get_game_metadata(cls, minecraft_version):
