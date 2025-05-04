@@ -111,14 +111,20 @@ class FileUtil:
     @classmethod
     def set_resource_pack_dir(cls, path):
         """设置资源包目录"""
-        cls._safe_create_dir(path)
-        cls._resource_pack_dir = path
+        # 将相对路径转换为绝对路径
+        abs_path = Path(path).resolve()
+        cls._safe_create_dir(abs_path)
+        cls._resource_pack_dir = abs_path
+        Logger.debug(f"资源包目录(绝对路径): {abs_path}")
     
     @classmethod
     def set_temporary_dir(cls, path):
         """设置临时目录"""
-        cls._safe_create_dir(path)
-        cls._temporary_dir = path
+        # 将相对路径转换为绝对路径
+        abs_path = Path(path).resolve()
+        cls._safe_create_dir(abs_path)
+        cls._temporary_dir = abs_path
+        Logger.debug(f"临时目录(绝对路径): {abs_path}")
     
     @staticmethod
     def _safe_create_dir(path):
@@ -152,15 +158,24 @@ class FileUtil:
             tmp_file_path: 临时文件路径
             save_to_game: 是否保存到游戏目录
         """
+        # 检查并处理空路径
+        if not file_path or not tmp_file_path:
+            Logger.warning(f"无法同步文件，路径为空: file_path={file_path}, tmp_file_path={tmp_file_path}")
+            return
+        
+        # 确保路径是Path对象
+        file_path = Path(file_path) if not isinstance(file_path, Path) else file_path
+        tmp_file_path = Path(tmp_file_path) if not isinstance(tmp_file_path, Path) else tmp_file_path
+        
         # 两个文件都不存在
-        if not os.path.exists(file_path) and not os.path.exists(tmp_file_path):
+        if not file_path.exists() and not tmp_file_path.exists():
             Logger.debug("两个文件都不存在，无需同步")
             return
         
         # 比较两个文件的修改时间
-        if os.path.exists(file_path) and os.path.exists(tmp_file_path):
-            file_mtime = os.path.getmtime(file_path)
-            tmp_file_mtime = os.path.getmtime(tmp_file_path)
+        if file_path.exists() and tmp_file_path.exists():
+            file_mtime = file_path.stat().st_mtime
+            tmp_file_mtime = tmp_file_path.stat().st_mtime
             
             # 文件时间相同，已经同步
             if abs(file_mtime - tmp_file_mtime) < 1:  # 允许1秒误差
@@ -174,7 +189,7 @@ class FileUtil:
             else:
                 source = tmp_file_path
                 target = file_path
-        elif os.path.exists(file_path):
+        elif file_path.exists():
             source = file_path
             target = tmp_file_path
         else:
@@ -188,7 +203,7 @@ class FileUtil:
         # 复制文件
         try:
             # 确保目标目录存在
-            os.makedirs(os.path.dirname(target), exist_ok=True)
+            os.makedirs(target.parent, exist_ok=True)
             
             shutil.copy2(source, target)
             Logger.info(f"同步文件: {source} -> {target}")
