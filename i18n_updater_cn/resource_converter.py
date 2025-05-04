@@ -84,8 +84,8 @@ class ResourcePackConverter:
             
             Logger.info(f"资源包转换完成: {self.tmp_output_file_path}")
             
-            # 同步到游戏目录
-            FileUtil.sync_tmp_file(self.tmp_output_file_path, self.output_file_path, True)
+            # 同步到游戏目录 - 修复参数顺序
+            FileUtil.sync_tmp_file(self.output_file_path, self.tmp_output_file_path, True)
             
         except Exception as e:
             Logger.error(f"转换资源包失败: {e}")

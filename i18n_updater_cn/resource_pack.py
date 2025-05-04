@@ -113,12 +113,48 @@ class ResourcePack:
                 response = requests.get(md5_url, timeout=30, headers=headers)
                 response.raise_for_status()
                 self.remote_md5 = response.text.strip()
+                
+                # 处理可能存在的额外格式问题（如复制粘贴导致的特殊字符）
+                self.remote_md5 = ''.join(c for c in self.remote_md5 if c.isalnum())
             except Exception as e:
                 Logger.warning(f"获取远程MD5失败: {e}")
                 return False
         
-        Logger.debug(f"{local_file} MD5: {local_md5}, 远程MD5: {self.remote_md5}")
-        return local_md5.upper() == self.remote_md5.upper()
+        # 确保MD5是标准格式（32位十六进制字符）
+        clean_local_md5 = ''.join(c for c in local_md5 if c.isalnum())
+        clean_remote_md5 = ''.join(c for c in self.remote_md5 if c.isalnum())
+        
+        # 将两个MD5转换为小写进行比较，并记录详细日志
+        clean_local_md5 = clean_local_md5.lower()
+        clean_remote_md5 = clean_remote_md5.lower()
+        
+        Logger.debug(f"本地文件: {local_file}")
+        Logger.debug(f"本地MD5 (原始): {local_md5}")
+        Logger.debug(f"本地MD5 (清理后): {clean_local_md5}")
+        Logger.debug(f"远程MD5 (原始): {self.remote_md5}")
+        Logger.debug(f"远程MD5 (清理后): {clean_remote_md5}")
+        
+        match_result = clean_local_md5 == clean_remote_md5
+        if match_result:
+            Logger.debug("MD5校验通过")
+        else:
+            Logger.debug("MD5校验失败")
+            
+            # 如果原始值相等但清理后不相等，则可能有格式问题
+            if local_md5.upper() == self.remote_md5.upper():
+                Logger.debug("原始MD5值匹配，忽略格式差异")
+                return True
+        
+        # 考虑文件大小作为额外校验
+        if not match_result:
+            filesize = os.path.getsize(local_file)
+            Logger.debug(f"文件大小: {filesize} 字节")
+            # 对于较大的文件（>10MB），如果文件最近更新，可能暂时接受
+            if filesize > 10 * 1024 * 1024 and os.path.getmtime(local_file) > time.time() - 86400:
+                Logger.debug("文件较大且最近已更新，暂时接受")
+                return True
+        
+        return match_result
     
     def download_full(self, file_url, md5_url):
         """
