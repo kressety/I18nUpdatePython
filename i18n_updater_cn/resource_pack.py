@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import time
+import hashlib
+import shutil
+import requests
+from pathlib import Path
+
+from .utils import Logger, FileUtil
+
+
+class ResourcePack:
+    """
+    资源包管理类，负责下载和校验资源包
+    对应Java版项目中的ResourcePack.java
+    """
+    
+    # 限制更新检查频率（1天）
+    UPDATE_TIME_GAP = 24 * 60 * 60  # 秒
+    
+    def __init__(self, filename, save_to_game=True):
+        """
+        初始化资源包
+        
+        Args:
+            filename: 资源包文件名
+            save_to_game: 是否保存到游戏目录
+        """
+        self.filename = filename
+        self.save_to_game = save_to_game
+        self.file_path = FileUtil.get_resource_pack_path(filename)
+        self.tmp_file_path = FileUtil.get_temporary_path(filename)
+        self.remote_md5 = None
+        
+        # 同步本地文件和临时文件
+        try:
+            FileUtil.sync_tmp_file(self.file_path, self.tmp_file_path, save_to_game)
+        except Exception as e:
+            Logger.warning(f"同步临时文件时出错 {self.file_path} <-> {self.tmp_file_path}: {e}")
+    
+    def check_update(self, file_url, md5_url):
+        """
+        检查并更新资源包
+        
+        Args:
+            file_url: 资源包文件URL
+            md5_url: MD5校验文件URL
+        """
+        try:
+            if self.is_up_to_date(md5_url):
+                Logger.debug("资源包已是最新版本")
+                return
+            
+            # 下载完整文件
+            self.download_full(file_url, md5_url)
+        except Exception as e:
+            Logger.warning(f"检查更新时出错: {e}")
+            raise
+    
+    def is_up_to_date(self, md5_url):
+        """
+        检查资源包是否为最新版本
+        
+        Args:
+            md5_url: MD5校验文件URL
+            
+        Returns:
+            布尔值，表示是否为最新版本
+        """
+        # 文件不存在，需要更新
+        if not os.path.exists(self.tmp_file_path):
+            Logger.debug(f"本地文件不存在: {self.tmp_file_path}")
+            return False
+        
+        # 最近更新过，不需要再次更新
+        if os.path.getmtime(self.tmp_file_path) > time.time() - self.UPDATE_TIME_GAP:
+            Logger.debug(f"本地文件最近已更新过: {self.tmp_file_path}")
+            return True
+        
+        # 比较MD5校验码
+        return self.check_md5(self.tmp_file_path, md5_url)
+    
+    def check_md5(self, local_file, md5_url):
+        """
+        比较本地文件与远程MD5
+        
+        Args:
+            local_file: 本地文件路径
+            md5_url: 远程MD5文件URL
+            
+        Returns:
+            布尔值，表示MD5是否匹配
+        """
+        # 计算本地文件MD5
+        local_md5 = self._calculate_md5(local_file)
+        
+        # 获取远程MD5
+        if self.remote_md5 is None:
+            try:
+                response = requests.get(md5_url, timeout=30)
+                response.raise_for_status()
+                self.remote_md5 = response.text.strip()
+            except Exception as e:
+                Logger.warning(f"获取远程MD5失败: {e}")
+                return False
+        
+        Logger.debug(f"{local_file} MD5: {local_md5}, 远程MD5: {self.remote_md5}")
+        return local_md5.upper() == self.remote_md5.upper()
+    
+    def download_full(self, file_url, md5_url):
+        """
+        下载完整资源包
+        
+        Args:
+            file_url: 资源包文件URL
+            md5_url: MD5校验文件URL
+        """
+        try:
+            # 创建临时下载文件
+            download_tmp = FileUtil.get_temporary_path(f"{self.filename}.tmp")
+            
+            # 下载文件
+            Logger.info(f"正在下载: {file_url} -> {download_tmp}")
+            response = requests.get(file_url, stream=True, timeout=300)
+            response.raise_for_status()
+            
+            # 保存到临时文件
+            with open(download_tmp, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            # 校验下载文件MD5
+            if not self.check_md5(download_tmp, md5_url):
+                raise ValueError("下载文件MD5校验失败")
+            
+            # 移动到目标临时文件
+            shutil.move(download_tmp, self.tmp_file_path)
+            Logger.info(f"下载完成: {file_url} -> {self.tmp_file_path}")
+            
+            # 同步到游戏目录
+            FileUtil.sync_tmp_file(self.file_path, self.tmp_file_path, self.save_to_game)
+            
+        except Exception as e:
+            Logger.warning(f"下载失败: {e}")
+            if os.path.exists(self.tmp_file_path):
+                Logger.info("使用现有临时文件")
+            else:
+                raise FileNotFoundError(f"临时文件不存在: {self.tmp_file_path}")
+    
+    @staticmethod
+    def _calculate_md5(file_path):
+        """
+        计算文件的MD5哈希值
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            MD5哈希值的十六进制字符串
+        """
+        md5_hash = hashlib.md5()
+        with open(file_path, "rb") as f:
+            # 每次读取4MB数据
+            for chunk in iter(lambda: f.read(4 * 1024 * 1024), b""):
+                md5_hash.update(chunk)
+        return md5_hash.hexdigest()
+    
+    def get_tmp_file_path(self):
+        """获取临时文件路径"""
+        return self.tmp_file_path
+    
+    def get_filename(self):
+        """获取文件名"""
+        return self.filename
