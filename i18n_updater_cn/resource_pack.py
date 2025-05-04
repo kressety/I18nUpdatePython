@@ -99,7 +99,18 @@ class ResourcePack:
         # 获取远程MD5
         if self.remote_md5 is None:
             try:
-                response = requests.get(md5_url, timeout=30)
+                # 自定义请求头，防止下载管理器如IDM拦截请求
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/plain',
+                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive',
+                    'Cache-Control': 'no-cache',
+                    'X-I18n-Updater': 'md5-check'
+                }
+                
+                response = requests.get(md5_url, timeout=30, headers=headers)
                 response.raise_for_status()
                 self.remote_md5 = response.text.strip()
             except Exception as e:
@@ -123,7 +134,22 @@ class ResourcePack:
             
             # 下载文件
             Logger.info(f"正在下载: {file_url} -> {download_tmp}")
-            response = requests.get(file_url, stream=True, timeout=300)
+            
+            # 自定义请求头，防止下载管理器如IDM拦截请求
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'X-Requested-With': 'XMLHttpRequest',
+                'DNT': '1',  # 请求不跟踪
+                'X-I18n-Updater': 'direct-download'  # 自定义标识，表明这是直接下载
+            }
+            
+            response = requests.get(file_url, stream=True, timeout=300, headers=headers)
             response.raise_for_status()
             
             # 保存到临时文件
