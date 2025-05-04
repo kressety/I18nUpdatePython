@@ -149,28 +149,70 @@ class ResourcePack:
                 'X-I18n-Updater': 'direct-download'  # 自定义标识，表明这是直接下载
             }
             
-            response = requests.get(file_url, stream=True, timeout=300, headers=headers)
-            response.raise_for_status()
+            # 确保下载目录存在
+            os.makedirs(os.path.dirname(download_tmp), exist_ok=True)
             
-            # 保存到临时文件
-            with open(download_tmp, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+            # 下载文件
+            retry_count = 0
+            max_retries = 3
+            while retry_count < max_retries:
+                try:
+                    response = requests.get(file_url, stream=True, timeout=300, headers=headers)
+                    response.raise_for_status()
+                    
+                    # 保存到临时文件
+                    with open(download_tmp, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                    
+                    # 校验下载文件MD5
+                    if self.check_md5(download_tmp, md5_url):
+                        # 移动到目标临时文件
+                        os.makedirs(os.path.dirname(self.tmp_file_path), exist_ok=True)
+                        shutil.move(download_tmp, self.tmp_file_path)
+                        Logger.info(f"下载完成: {file_url} -> {self.tmp_file_path}")
+                        
+                        # 同步到游戏目录
+                        FileUtil.sync_tmp_file(self.file_path, self.tmp_file_path, self.save_to_game)
+                        return
+                    else:
+                        Logger.warning(f"下载文件MD5校验失败 (尝试 {retry_count + 1}/{max_retries})")
+                        retry_count += 1
+                except Exception as e:
+                    Logger.warning(f"下载尝试失败: {e} (尝试 {retry_count + 1}/{max_retries})")
+                    retry_count += 1
+                    
+                # 短暂等待后重试
+                if retry_count < max_retries:
+                    time.sleep(2)
             
-            # 校验下载文件MD5
-            if not self.check_md5(download_tmp, md5_url):
-                raise ValueError("下载文件MD5校验失败")
+            # 所有重试都失败
+            Logger.warning(f"下载失败: 所有 {max_retries} 次尝试后仍无法完成下载")
             
-            # 移动到目标临时文件
-            shutil.move(download_tmp, self.tmp_file_path)
-            Logger.info(f"下载完成: {file_url} -> {self.tmp_file_path}")
-            
-            # 同步到游戏目录
-            FileUtil.sync_tmp_file(self.file_path, self.tmp_file_path, self.save_to_game)
-            
+            # 检查之前的临时文件是否存在
+            if os.path.exists(self.tmp_file_path):
+                Logger.info(f"使用现有临时文件: {self.tmp_file_path}")
+                return
+            elif os.path.exists(download_tmp):
+                # 如果临时下载文件存在但校验失败，仍然使用它作为临时文件
+                Logger.warning("使用未通过MD5校验的临时文件")
+                shutil.move(download_tmp, self.tmp_file_path)
+                return
+            else:
+                raise FileNotFoundError(f"临时文件不存在: {self.tmp_file_path}")
+                
         except Exception as e:
             Logger.warning(f"下载失败: {e}")
+            
+            # 清理可能存在的临时下载文件
+            if os.path.exists(download_tmp):
+                try:
+                    os.remove(download_tmp)
+                except:
+                    pass
+                
+            # 检查之前的临时文件
             if os.path.exists(self.tmp_file_path):
                 Logger.info("使用现有临时文件")
             else:
