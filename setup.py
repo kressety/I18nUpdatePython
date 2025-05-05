@@ -14,9 +14,9 @@ setup(
     description="Minecraft模组汉化包更新器",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/kressety/I18nUpdatePython",
+    url="https://github.com/zack-zzq/I18nUpdatePython",
     project_urls={
-        "Bug Tracker": "https://github.com/kressety/I18nUpdatePython/issues",
+        "Bug Tracker": "https://github.com/zack-zzq/I18nUpdatePython/issues",
     },
     classifiers=[
         "Programming Language :: Python :: 3",
