@@ -8,7 +8,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="i18n-updater-cn",
-    version="1.0.6",
+    version="1.0.7",
     author="Zack Zhu",
     author_email="kressety@163.com",
     description="Minecraft模组汉化包更新器",
